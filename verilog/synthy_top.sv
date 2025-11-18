@@ -32,11 +32,15 @@ module synthy_top(
         output logic SPKL, // headphone jack left
         output logic SPKR // headphone jack right
     );
-    
-   
-   
-   
+   logic[32:0] pcm_signal; 
+   logic pwm_clock;
    logic output_audio;
+   clk_wiz_0 clocker(.clk_in1(clk), .clk_out1(pwm_clock));
+   pwm_generator generator(
+        .clk(pwm_clock), // Input 800mhz clock
+        .audio_clock(audio_clock), // Input 44.1 khz clock
+        .pcm(pcm_signal),
+        .output_pwm(output_audio));
    // Stereo audio for now
    assign SPKL = output_audio; 
    assign SPKR = output_audio;

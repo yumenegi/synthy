@@ -21,14 +21,14 @@
 
 
 module pwm_generator(
-        input logic clk, // Input 100mhz clock
-        input logic audio_clock,
+        input logic clk, // Input 800mhz clock
+        input logic audio_clock, // Input 44.1 khz clock
         input logic[32:0] pcm,
         output logic output_pwm
     );
     
     logic [32:0] current_pcm;
-    logic [32:0] counter;
+    logic [14:0] counter; // So a full audio duty cycle is 18141 input clock ticks 
 
     always_ff @(posedge audio_clock)
 	begin
@@ -38,5 +38,9 @@ module pwm_generator(
 	always_ff @(posedge clk)
 	begin
 	   counter <= counter + 1;
+	   if ((current_pcm / 18141) > counter)
+	       output_pwm = 0;
+	   else
+	       output_pwm = 1;
 	end
 endmodule
