@@ -21,7 +21,7 @@
 
 
 module pwm_generator(
-        input logic clk, // Input 800mhz clock
+        input logic clk, // Input 441mhz clock
         input logic audio_clock, // Input 44.1 khz clock
         input logic[32:0] pcm,
         output logic output_pwm
@@ -38,7 +38,7 @@ module pwm_generator(
 	always_ff @(posedge clk)
 	begin
 	   counter <= counter + 1;
-	   if ((current_pcm / 18141) > counter)
+	   if (counter > (current_pcm / 10000))
 	       output_pwm = 0;
 	   else
 	       output_pwm = 1;
