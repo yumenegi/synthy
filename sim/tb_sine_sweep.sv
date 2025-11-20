@@ -35,8 +35,14 @@ module tb_sine_sweep;
     end
 
     // log to file, slow
+    // previous value of strobe to detect edges
+    logic wr_strb_prev;
+
     always @(posedge dut.clk_sys) begin
-        if (dut.wr_strb) begin // on write strobe, we log output of audio_out
+        wr_strb_prev <= dut.wr_strb; // remember summer days
+        
+        // negedge
+        if (dut.wr_strb && !wr_strb_prev) begin
             AUDIO_OUT <= dut.audio_out[0];
             $fdisplay(f, "%d", $signed(dut.audio_out[0])); 
         end
@@ -62,15 +68,16 @@ module tb_sine_sweep;
         #100;
         wait(dut.locked == 1);
         
-//        $display("Starting Sweep...");
+        $display("Starting Sweep...");
 //        #1000;
-//        for (int f = 440; f <= 22000; f = f + 2000) begin
+//        for (int f = 200; f <= 2200; f = f + 100) begin
 //            dut.stride[0] = calc_stride(f);
-//            #2ms; 
+//            #10ms; 
 //        end
-//        $display("Sweep Complete. Saving file...");
-        dut.stride[0] = calc_stride(1000); // 1khz test tone
-        #2s; 
+       
+        $display("Sweep Complete. Saving file...");
+        dut.stride[0] = calc_stride(110); // 1khz test tone
+        #100ms; 
         $fclose(f);
         $stop;
     end
