@@ -52,7 +52,7 @@ module envelope(
                 // Check level
                 // If the level is greater than ffff00, on the next increment
                 // it will overflow
-                if (output_level >= 24'hffff00) begin 
+                if (output_level >= 24'hFFFFFF - increment) begin 
                     // set max vol
                     output_level <= 24'hffffff;
                     state <= DECAY; 

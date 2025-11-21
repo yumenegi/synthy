@@ -91,12 +91,15 @@ module top(
     logic [6:0] wt_pos_in;
     assign wt_pos_in = lfo_out[15:9];
 
+
+    // wt
+    logic [15:0] wt_out;
     wt_scanning wt0(
         .clk_sys(clk_sys),
         .wr_strb(wr_strb),
         .stride(stride[0]),
         .wt_pos(wt_pos_in),
-        .audio_out(audio_out[0])
+        .audio_out(wt_out)
     );
     
     sigma_delta pdm (
@@ -106,6 +109,29 @@ module top(
         .pdm(SPKL)
     );
     assign SPKR = SPKL;
+
+    logic [15:0] env_out; 
+    envelope env (
+        .wr_strb(wr_strb),
+        .ar(8'ha0),
+        .ar_rs(4'h1),
+        .dr(8'h0a),
+        .dr_rs(4'h2),
+        .sl(16'h9999),
+        .rr(8'h0a),
+        .rr_rs(4'h0),
+        .exp_mode_on(1'b0),
+        .key_on(BTN[0]),
+        .env_out(env_out)
+    );
+
+    vca amp (
+        .audio_in(wt_out),
+        .gain(env_out),
+        .audio_out(audio_out[0])
+    );
+
+
     
-    assign LED = {9'b0, wt_pos_in};
+    assign LED = {env_out};
 endmodule
