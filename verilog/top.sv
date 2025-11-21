@@ -50,6 +50,20 @@ module top(
     // stride table
     logic [31:0] stride[64];
     
+    // for testing
+    // 1 hz number of strides
+    localparam logic [31:0] FREQ_TO_STRIDE_CONST = 32'd97392;
+    logic [31:0] base_stride;
+    
+    // bottom switches is hz increase
+    // top switches are octaves
+    assign base_stride = SW[7:0] * FREQ_TO_STRIDE_CONST;    
+    assign stride[0] = base_stride << SW[10:8];
+    
+    // lfo freq
+    logic [31:0] lfo_freq;
+    assign lfo_freq = SW[15:11] * FREQ_TO_STRIDE_CONST;
+    
     // output of each wt operator
     logic [15:0] audio_out[8];
     
@@ -64,12 +78,34 @@ module top(
         .ready_for_sample(wr_strb) // request signal
     );
     
-    // wavetabling
-    wt wt0(
+    logic [15:0] lfo_out;
+//     wavetabling
+    wt lfo(
         .clk_sys(clk_sys),
-        .clk_audio(clk_audio),
+        .wr_strb(wr_strb),
+        .stride(lfo_freq),
+        .audio_out(lfo_out)
+    );
+    
+    // wavetable position
+    logic [6:0] wt_pos_in;
+    assign wt_pos_in = lfo_out[15:9];
+
+    wt_scanning wt0(
+        .clk_sys(clk_sys),
         .wr_strb(wr_strb),
         .stride(stride[0]),
+        .wt_pos(wt_pos_in),
         .audio_out(audio_out[0])
     );
+    
+    sigma_delta pdm (
+        .clk(clk_sys),
+        .reset(~locked),
+        .pcm(audio_out[0]),
+        .pdm(SPKL)
+    );
+    assign SPKR = SPKL;
+    
+    assign LED = {9'b0, wt_pos_in};
 endmodule
