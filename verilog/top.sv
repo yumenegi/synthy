@@ -16,16 +16,18 @@ module top(
     input  logic [15:0] SW,
     input  logic [ 3:0] BTN,
     output logic [15:0] LED,
-    input  logic       JA1_P,      // SPI_CS_N
-    input  logic       JA1_N,      // SPI_MOSI
-    output logic       JA2_P,      // SPI_MISO
-    input  logic       JA2_N,      // SPI_SCK
-    output logic       JB1_P,      // I2S_MCLK
-    output logic       JB1_N,      // I2S_BCLK
-    output logic       JB2_P,      // I2S_LRCLK
-    output logic       JB2_N,      // I2S_SDATA
-    output logic       SPKL,
-    output logic       SPKR
+    input  logic        JA1_P,      // SPI_CS_N
+    input  logic        JA1_N,      // SPI_MOSI
+    output logic        JA2_P,      // SPI_MISO
+    input  logic        JA2_N,      // SPI_SCK
+    output logic        JB1_P,      // I2S_MCLK
+    output logic        JB1_N,      // I2S_BCLK
+    output logic        JB2_P,      // I2S_LRCLK
+    output logic        JB2_N,      // I2S_SDATA
+    output logic        SPKL,
+    output logic        SPKR,
+    output logic [2:0]  RGB0,
+    output logic [2:0]  RGB1
     );
     
     // clk sig
@@ -113,13 +115,13 @@ module top(
     logic [15:0] env_out; 
     envelope env (
         .wr_strb(wr_strb),
-        .ar(8'ha0),
-        .ar_rs(4'h1),
+        .ar(8'h0a),
+        .ar_rs(4'h3),
         .dr(8'h0a),
         .dr_rs(4'h2),
         .sl(16'h9999),
         .rr(8'h0a),
-        .rr_rs(4'h0),
+        .rr_rs(4'h1),
         .exp_mode_on(1'b0),
         .key_on(BTN[0]),
         .env_out(env_out)
@@ -131,7 +133,29 @@ module top(
         .audio_out(audio_out[0])
     );
 
+    // Define RGB Output Wires
+    logic [2:0] rgb0_sigs;
+    logic [2:0] rgb1_sigs;
 
+    // Instantiate Visualizer
+    visualizer vis (
+        .clk(clk_sys),
+        .reset(~locked),
+        .audio_in(audio_out[0]), // Your main synth audio
+        .lfo_in(lfo_out),        // Your LFO audio
+        .stride_in(stride[0]),   // Your current pitch
+        .rgb0(rgb0_sigs),
+        .rgb1(rgb1_sigs)
+    );
+
+    // Map to Physical Ports (Individual bits)
+    assign RGB0[0] = rgb0_sigs[0]; // R
+    assign RGB0[1] = rgb0_sigs[1]; // G
+    assign RGB0[2] = rgb0_sigs[2]; // B
+    
+    assign RGB1[0] = rgb1_sigs[0]; // R
+    assign RGB1[1] = rgb1_sigs[1]; // G
+    assign RGB1[2] = rgb1_sigs[2]; // B
     
     assign LED = {env_out};
 endmodule
