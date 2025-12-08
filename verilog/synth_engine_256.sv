@@ -20,7 +20,7 @@ module synth_engine_256(
                                                 // 7 lsb is wt position
                                                 // @important
                                                 // the mcu is expected to know
-                                                // how large the wt is so no
+                                                // how large the wt is so no    
                                                 // overflow occurs
     input   logic [2:0]     param_wt_lfo_id_in,    // lfo id, 0 to 8
     input   logic [2:0]     param_env_id_in,    // envelope id, 0 to 8
@@ -55,6 +55,8 @@ module synth_engine_256(
     input  logic [15:0]     bram2_data_b,
     input  logic [15:0]     bram3_data_a, 
     input  logic [15:0]     bram3_data_b,
+    output logic [15:0]     bram_wdata,     
+    output logic [3:0]      bram_we,   
 
     output logic [15:0] audio_out // mixed audio out
     );
@@ -66,6 +68,7 @@ module synth_engine_256(
     logic [31:0] op_stride_mem [256];           // stride
     logic [9:0] op_wt_id_mem [256];             // wt settings, id, slice, lfo
     logic [2:0] op_wt_lfo_id_mem [256];         // which lfo?
+                                                // unused right now
     logic [2:0] op_wt_gain_env_id_mem [256];    // which gain env?
     logic op_key_on_mem [256];               // which op to turn on?
 
@@ -91,6 +94,9 @@ module synth_engine_256(
     logic [3:0] env_rr_rs_mem [8];      // rate scaling
     logic [2:0] wr_addr_env;
     assign wr_addr_env = param_wr_addr[2:0];
+
+    // Final audio output
+    logic signed [15:0] final_voice_sample;
 
     // write logic
     // get data into the registers
@@ -126,7 +132,7 @@ module synth_engine_256(
     logic [2:0] sync_chain = 0;
     
     // 3 stage signal
-    always_ff @(posedge clk_sys) begin
+    always_ff @(posedge clk) begin
         // shift the slow signal into our fast domain
         // sync_chain[0] = metastable
         // sync_chain[1] = synchronized input 
@@ -175,9 +181,23 @@ module synth_engine_256(
     logic [8:0] op_idx; // operator index
                         // bit 8, pipeline done bit
     logic processing;   // shift register
-    logic [31:0] mixer_acc; // mixer accumulator, only updated when pipeline is
+    logic signed [31:0] mixer_acc; // mixer accumulator, only updated when pipeline is
                             // done 
     logic [6:0] pipe_valid; // signal the data in pipe is valid
+
+    initial begin
+        for (int i=0; i<256; i++) begin
+            op_stride_mem[i] = 0;
+            op_wt_id_mem[i] = 0;       
+            op_wt_lfo_id_mem[i] = 0;      
+            op_wt_gain_env_id_mem[i] = 0;   
+            phase_mem[i] = 0;        
+            op_env_gain_vol[i] = 0;            
+            op_env_gain_state[i] = 0;
+            op_key_on_mem[i] = 0;            
+            op_prev_key_on_mem[i] = 0;    
+        end
+    end
 
     // TODO: test pipeline delay
     always_ff @(posedge clk) begin
@@ -204,7 +224,7 @@ module synth_engine_256(
                 else op_idx <= op_idx + 1; // else increment current slice
             end
 
-            if (pipe_valid[3]) begin
+            if (pipe_valid[1]) begin
                 // Use the result from the previous combinational block
                 mixer_acc <= mixer_acc + final_voice_sample; 
             end
@@ -216,15 +236,6 @@ module synth_engine_256(
         end
     end
 
-    // stage 1: read update
-    // logic [31:0] s1_stride; // unused
-    // logic [31:0] s1_phase;
-    // logic [9:0]  s1_wt_id;
-    // logic [23:0] s1_env_vol;
-    // logic [2:0]  s1_env_state;
-    // logic        s1_key_on;
-    // logic        s1_prev_key_on;
-    // logic [31:0] s1_next_phase;
     localparam IDLE=0, ATTACK=1, DECAY=2, SUSTAIN=3, RELEASE=4;
 
     // envelope settings
@@ -236,16 +247,6 @@ module synth_engine_256(
     logic [15:0] s1_env_sl;
     logic [7:0] s1_env_rr;
     logic [3:0] s1_env_rr_rs;
-
-    // // operation states
-    // assign s1_stride        = op_stride_mem[op_idx];
-    // assign s1_phase         = phase_mem[op_idx];
-    // assign s1_wt_id         = op_wt_id_mem[op_idx];
-    // assign s1_env_vol       = op_env_gain_vol[op_idx];
-    // assign s1_env_state     = op_env_gain_state[op_idx];
-    // assign s1_key_on        = op_key_on_mem[op_idx];
-    // assign s1_prev_key_on   = op_prev_key_on_mem[op_idx];
-    // assign s1_next_phase    = s1_phase + s1_stride;
 
     // setting to specific slice's envelope id
     assign s1_env_id        = op_wt_gain_env_id_mem[op_idx];
@@ -277,7 +278,7 @@ module synth_engine_256(
 
     // sl target bit extend
     logic [23:0] sl_target;
-    logic sl_target = {s1_env_sl, 8'h00};
+    assign sl_target = {s1_env_sl, 8'h00};
 
     // set rate depending on state
     always_comb begin
@@ -341,7 +342,7 @@ module synth_engine_256(
 
             SUSTAIN: begin
                 // Hold exact Sustain Level
-                next_env_vol = {global_sl, 8'h00};
+                next_env_vol = {s1_env_sl, 8'h00};
                 
                 // Wait for Key Off
                 if (!r_key_on) next_env_state = RELEASE;
@@ -447,12 +448,11 @@ module synth_engine_256(
     // VCA
     logic signed [15:0] interp_out;
     logic signed [31:0] vca_product;
-    logic signed [15:0] final_voice_sample;
     logic signed [16:0] diff;
     logic signed [32:0] prod;
 
     always_comb begin
-        if (pipe_valid[2]) begin // TODO, check pipe delay
+        if (pipe_valid[1]) begin // TODO, check pipe delay
             // linear interpolation
             diff = $signed(raw_b) - $signed(raw_a); // diff
             prod = diff * $signed({1'b0, s3_frac}); // fraction
