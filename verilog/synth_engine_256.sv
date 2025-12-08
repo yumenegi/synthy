@@ -179,11 +179,13 @@ module synth_engine_256(
                             // done 
     logic [6:0] pipe_valid; // signal the data in pipe is valid
 
+    // TODO: test pipeline delay
     always_ff @(posedge clk) begin
         if (reset) begin
             op_idx <= 0; 
             processing <= 0; 
             pipe_valid <= 0;
+            mixer_acc <= 0;
         end else begin
             // If in Write Mode, we essentially pause/clear the pipeline valid bits
             // so no garbage audio is accumulated.
@@ -201,9 +203,14 @@ module synth_engine_256(
                 if (op_idx == 255) processing <= 0; // stop pipe if processed all
                 else op_idx <= op_idx + 1; // else increment current slice
             end
+
+            if (pipe_valid[3]) begin
+                // Use the result from the previous combinational block
+                mixer_acc <= mixer_acc + final_voice_sample; 
+            end
             
             // after all slices are processed, the audio becomes valid
-            if (pipe_valid[6] && !pipe_valid[5]) begin
+            if (pipe_valid[4] && !pipe_valid[3]) begin
                 audio_out <= mixer_acc[23:8]; 
             end
         end
@@ -211,16 +218,17 @@ module synth_engine_256(
 
     // stage 1: read update
     // logic [31:0] s1_stride; // unused
-    logic [31:0] s1_phase;
-    logic [9:0]  s1_wt_id;
-    logic [23:0] s1_env_vol;
-    logic [2:0]  s1_env_state;
-    logic        s1_key_on;
-    logic        s1_prev_key_on;
-    logic [31:0] s1_next_phase;
+    // logic [31:0] s1_phase;
+    // logic [9:0]  s1_wt_id;
+    // logic [23:0] s1_env_vol;
+    // logic [2:0]  s1_env_state;
+    // logic        s1_key_on;
+    // logic        s1_prev_key_on;
+    // logic [31:0] s1_next_phase;
     localparam IDLE=0, ATTACK=1, DECAY=2, SUSTAIN=3, RELEASE=4;
 
     // envelope settings
+    logic [2:0] s1_env_id;
     logic [7:0] s1_env_ar;
     logic [3:0] s1_env_ar_rs;
     logic [7:0] s1_env_dr;
@@ -235,12 +243,12 @@ module synth_engine_256(
     // assign s1_wt_id         = op_wt_id_mem[op_idx];
     // assign s1_env_vol       = op_env_gain_vol[op_idx];
     // assign s1_env_state     = op_env_gain_state[op_idx];
-    assign s1_env_id        = op_wt_gain_env_id_mem[op_idx];
     // assign s1_key_on        = op_key_on_mem[op_idx];
     // assign s1_prev_key_on   = op_prev_key_on_mem[op_idx];
     // assign s1_next_phase    = s1_phase + s1_stride;
 
     // setting to specific slice's envelope id
+    assign s1_env_id        = op_wt_gain_env_id_mem[op_idx];
     assign s1_env_ar        = env_ar_mem[s1_env_id]; 
     assign s1_env_ar_rs     = env_ar_rs_mem[s1_env_id]; 
     assign s1_env_dr        = env_dr_mem[s1_env_id]; 
@@ -249,7 +257,7 @@ module synth_engine_256(
     assign s1_env_rr        = env_rr_mem[s1_env_id]; 
     assign s1_env_rr_rs     = env_rr_rs_mem[s1_env_id]; 
 
-    // combinational read
+    // combinational read first stage of pipeline
     logic [31:0] r_stride;
     logic [31:0] r_phase;
     logic [9:0]  r_wt_id;
@@ -258,6 +266,7 @@ module synth_engine_256(
     logic        r_key_on;
     logic        r_prev_key_on;
 
+    // first stage variable to next state
     logic [31:0] next_phase;
     logic [23:0] next_env_vol;
     logic [2:0]  next_env_state;
@@ -265,6 +274,10 @@ module synth_engine_256(
 
     // envelope increment and output level for vca
     logic [23:0] increment;
+
+    // sl target bit extend
+    logic [23:0] sl_target;
+    logic sl_target = {s1_env_sl, 8'h00};
 
     // set rate depending on state
     always_comb begin
@@ -314,11 +327,6 @@ module synth_engine_256(
             end
 
             DECAY: begin
-                // Calculate Target: Sustain Level (shifted to top 16 bits)
-                // Use 25-bit math to safely check "undershoot"
-                logic [23:0] sl_target;
-                sl_target = {global_sl, 8'h00};
-
                 // Check if we passed the Sustain Level
                 // Use a temporary larger variable to check subtraction result
                 if (r_env_vol <= sl_target + increment) begin
@@ -357,31 +365,108 @@ module synth_engine_256(
 
     end
 
+    logic [1:0]  s2_bank_sel;
+    logic [15:0] s2_frac;
+    logic [15:0] s2_env_vol_top;
+
     // stride calculation and envelope
     always_ff @(posedge clk) begin
         if (processing) begin
             ////////////////////////////////////////////////////////////////////
             // phase calculation
-            phase_mem[op_idx] <= s1_next_phase; // phase calculation, will be 
+            phase_mem[op_idx] <= next_phase; // phase calculation, will be 
                                                 // combined with the id
             // previous key on update
-            op_prev_key_on_mem[op_idx] <= s1_key_on;
-
-            // set previous volume
-
+            op_prev_key_on_mem[op_idx] <= next_prev_key_on;
 
             ////////////////////////////////////////////////////////////////////
             // envelope stuff
-            // kinda scuffed to have envelope with the synth engine logic
-            // fun refactoring for the whole family oh well
+            op_env_gain_vol[op_idx] <= next_env_vol;
+            op_env_gain_state[op_idx] <= next_env_state;
 
-            // TODO: fix thios shit write comb logoci
-
-            
-
-
+            // pass off to stage 2
+            s2_bank_sel <= r_wt_id[9:8];
+            s2_frac <= next_phase[21:6];    // this is the 16 bit frac part
+                                            // discarding last 6 bits
+                                            // 16 bit for the interpolation
+            s2_env_vol_top <= next_env_vol[23:8]; // msb for the vca
         end
     end
+
+    // BRAM address calculation
+    logic [16:0] calc_addr_a, calc_addr_b;
+    // Bank bits [9:8] used for mux, frame bits [6:0] used here
+    assign calc_addr_a = {r_wt_id[6:0], next_phase[31:22]};
+
+    // Addr b for the next sample for interpolation
+    assign calc_addr_b = calc_addr_a + 1;
+
+    // write logic
+    assign bram_addr_a = calc_addr_a;
+    assign bram_addr_b = mcu_wr_en ? mcu_wr_addr : calc_addr_b;
+    assign bram_wdata  = mcu_wr_data;
+
+    always_comb begin
+        bram_we = 4'b0000;
+        if (mcu_wr_en) begin
+            case (mcu_wr_bank)
+                2'b00: bram_we = 4'b0001;
+                2'b01: bram_we = 4'b0010;
+                2'b10: bram_we = 4'b0100;
+                2'b11: bram_we = 4'b1000;
+            endcase
+        end
+    end
+
+
+    // stage 2 delay for data
+    // stall stage
+    logic [1:0]  s3_bank_sel;
+    logic [15:0] s3_frac;
+    logic [15:0] s3_env_vol;
+
+    always_ff @(posedge clk) begin
+        s3_bank_sel <= s2_bank_sel;
+        s3_frac     <= s2_frac;
+        s3_env_vol  <= s2_env_vol_top;
+    end
+
+    // stage 3
+    // data ready
+    logic [15:0] raw_a, raw_b;
+    
+    always_comb begin
+        case (s3_bank_sel)
+            2'b00: begin raw_a = bram0_data_a; raw_b = bram0_data_b; end
+            2'b01: begin raw_a = bram1_data_a; raw_b = bram1_data_b; end
+            2'b10: begin raw_a = bram2_data_a; raw_b = bram2_data_b; end
+            2'b11: begin raw_a = bram3_data_a; raw_b = bram3_data_b; end
+        endcase
+    end
+
+    // VCA
+    logic signed [15:0] interp_out;
+    logic signed [31:0] vca_product;
+    logic signed [15:0] final_voice_sample;
+    logic signed [16:0] diff;
+    logic signed [32:0] prod;
+
+    always_comb begin
+        if (pipe_valid[2]) begin // TODO, check pipe delay
+            // linear interpolation
+            diff = $signed(raw_b) - $signed(raw_a); // diff
+            prod = diff * $signed({1'b0, s3_frac}); // fraction
+            interp_out = $signed(raw_a) + (prod >>> 16); // add fraction
+
+            // vca
+            vca_product = $signed(interp_out) * $signed({1'b0, s3_env_vol});
+            final_voice_sample = vca_product[31:16];
+        end else begin
+            final_voice_sample = 0;
+        end
+    end
+    
+
 
     
 endmodule
