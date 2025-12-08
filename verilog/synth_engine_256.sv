@@ -210,7 +210,7 @@ module synth_engine_256(
     end
 
     // stage 1: read update
-    logic [31:0] s1_stride;
+    // logic [31:0] s1_stride; // unused
     logic [31:0] s1_phase;
     logic [9:0]  s1_wt_id;
     logic [23:0] s1_env_vol;
@@ -229,16 +229,16 @@ module synth_engine_256(
     logic [7:0] s1_env_rr;
     logic [3:0] s1_env_rr_rs;
 
-    // operation states
-    assign s1_stride        = op_stride_mem[op_idx];
-    assign s1_phase         = phase_mem[op_idx];
-    assign s1_wt_id         = op_wt_id_mem[op_idx];
-    assign s1_env_vol       = op_env_gain_vol[op_idx];
-    assign s1_env_state     = op_env_gain_state[op_idx];
+    // // operation states
+    // assign s1_stride        = op_stride_mem[op_idx];
+    // assign s1_phase         = phase_mem[op_idx];
+    // assign s1_wt_id         = op_wt_id_mem[op_idx];
+    // assign s1_env_vol       = op_env_gain_vol[op_idx];
+    // assign s1_env_state     = op_env_gain_state[op_idx];
     assign s1_env_id        = op_wt_gain_env_id_mem[op_idx];
-    assign s1_key_on        = op_key_on_mem[op_idx];
-    assign s1_prev_key_on   = op_prev_key_on_mem[op_idx];
-    assign s1_next_phase    = s1_phase + s1_stride;
+    // assign s1_key_on        = op_key_on_mem[op_idx];
+    // assign s1_prev_key_on   = op_prev_key_on_mem[op_idx];
+    // assign s1_next_phase    = s1_phase + s1_stride;
 
     // setting to specific slice's envelope id
     assign s1_env_ar        = env_ar_mem[s1_env_id]; 
@@ -249,18 +249,112 @@ module synth_engine_256(
     assign s1_env_rr        = env_rr_mem[s1_env_id]; 
     assign s1_env_rr_rs     = env_rr_rs_mem[s1_env_id]; 
 
+    // combinational read
+    logic [31:0] r_stride;
+    logic [31:0] r_phase;
+    logic [9:0]  r_wt_id;
+    logic [23:0] r_env_vol;
+    logic [2:0]  r_env_state;
+    logic        r_key_on;
+    logic        r_prev_key_on;
+
+    logic [31:0] next_phase;
+    logic [23:0] next_env_vol;
+    logic [2:0]  next_env_state;
+    logic        next_prev_key_on;
+
     // envelope increment and output level for vca
     logic [23:0] increment;
-    logic [23:0] s1_output_level;   // this get saved to the vol mem
 
     // set rate depending on state
     always_comb begin
-        case (s1_env_state)
+        r_stride        = op_stride_mem[op_idx];
+        r_phase         = phase_mem[op_idx];
+        r_wt_id         = op_wt_id_mem[op_idx];
+        r_env_vol       = op_env_gain_vol[op_idx];
+        r_env_state     = op_env_gain_state[op_idx];
+        r_key_on        = op_key_on_mem[op_idx];
+        r_prev_key_on   = op_prev_key_on_mem[op_idx];
+        
+        // next phase
+        next_phase      = r_phase + r_stride;
+
+        // default
+        next_env_vol        = r_env_vol;
+        next_env_state      = r_env_state;
+        next_prev_key_on    = r_key_on;
+
+        // increment logic
+        case (r_env_state)
             ATTACK:  increment = {12'b0, s1_env_ar, 4'b0} << s1_env_ar_rs; 
             DECAY:   increment = {12'b0, s1_env_dr, 4'b0} << s1_env_dr_rs; 
             RELEASE: increment = {12'b0, s1_env_rr, 4'b0} << s1_env_rr_rs; 
             default: increment = 0;
         endcase
+        
+        // asdr transition logic
+        case (r_env_state)
+            IDLE: begin
+                next_env_vol = 24'd0;
+                if (r_key_on && !r_prev_key_on) begin
+                    next_env_state = ATTACK;
+                end
+            end
+
+            ATTACK: begin
+                if (r_env_vol >= 24'hFFFFFF - increment) begin
+                    next_env_vol = 24'hFFFFFF; // Clamp to Max
+                    next_env_state = DECAY;    // Move to Decay
+                end else begin
+                    next_env_vol = r_env_vol + increment;
+                end
+
+                // Gate Logic: If key released early, go to Release
+                if (!r_key_on) next_env_state = RELEASE;
+            end
+
+            DECAY: begin
+                // Calculate Target: Sustain Level (shifted to top 16 bits)
+                // Use 25-bit math to safely check "undershoot"
+                logic [23:0] sl_target;
+                sl_target = {global_sl, 8'h00};
+
+                // Check if we passed the Sustain Level
+                // Use a temporary larger variable to check subtraction result
+                if (r_env_vol <= sl_target + increment) begin
+                    next_env_vol = sl_target; // Snap to Sustain
+                    next_env_state = SUSTAIN;
+                end else begin
+                    next_env_vol = r_env_vol - increment;
+                end
+
+                if (!r_key_on) next_env_state = RELEASE;
+            end
+
+            SUSTAIN: begin
+                // Hold exact Sustain Level
+                next_env_vol = {global_sl, 8'h00};
+                
+                // Wait for Key Off
+                if (!r_key_on) next_env_state = RELEASE;
+            end
+
+            RELEASE: begin
+                // Ramp down to 0
+                if (r_env_vol <= increment) begin
+                    next_env_vol = 24'd0; // Snap to 0
+                    next_env_state = IDLE;
+                end else begin
+                    next_env_vol = r_env_vol - increment;
+                end
+
+                // Retriggering: If Key pressed again during release, restart
+                if (r_key_on && !r_prev_key_on) next_env_state = ATTACK;
+            end
+            
+            default: next_env_state = IDLE;
+        endcase
+
     end
 
     // stride calculation and envelope
@@ -283,71 +377,7 @@ module synth_engine_256(
 
             // TODO: fix thios shit write comb logoci
 
-            case (s1_env_state)
-                IDLE: begin
-                    s1_output_level <= 24'b0;
-                    if (~s1_prev_key_on & s1_key_on)
-                        op_env_gain_state[op_idx] <= ATTACK;
-                end
-
-                ATTACK: begin
-                    // Check level
-                    // If the level is greater than ffff00, on the next increment
-                    // it will overflow
-                    if (s1_output_level >= 24'hFFFFFF - increment) begin 
-                        // set max vol
-                        s1_output_level <= 24'hffffff;
-                        op_env_gain_state[op_idx] <= DECAY; 
-                    end else begin
-                        s1_output_level <= s1_output_level + increment;
-                    end
-
-                    // Early release
-                    if (!s1_key_on) op_env_gain_state[op_idx] <= RELEASE;
-                end
-
-                DECAY: begin
-                    // Check level
-                    // If the level will dip below sustain
-                    if (s1_output_level <= {s1_env_sl, 8'h00}) begin 
-                        // set max vol
-                        s1_output_level <= {s1_env_sl, 8'h00};
-                        op_env_gain_state[op_idx] <= SUSTAIN; 
-                    end else begin
-                        s1_output_level <= s1_output_level - increment;
-                    end
-
-                    // Early release
-                    if (!s1_key_on) op_env_gain_state[op_idx] <= RELEASE;
-                end
-
-                SUSTAIN: begin
-                    // set sustain level
-                    s1_output_level <= {s1_env_sl, 8'h00};
-
-                    // key release
-                    if (!s1_key_on) op_env_gain_state[op_idx] <= RELEASE;
-                end
-
-                RELEASE: begin
-                    // will underflow
-                    if (s1_output_level <= increment) begin 
-                        // set min
-                        s1_output_level <= 24'b0;
-                        op_env_gain_state[op_idx] <= IDLE; 
-                    end else begin
-                        s1_output_level <= s1_output_level - increment;
-                    end
-
-                    // re-attack? rettack? 
-                    // == re: attack ==
-                    if (~s1_prev_key_on & s1_key_on)
-                        op_env_gain_state[op_idx] <= ATTACK;
-                end
-
-                default:
-                    op_env_gain_state[op_idx] <= IDLE;
-            endcase
+            
 
 
         end
