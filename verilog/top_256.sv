@@ -138,14 +138,14 @@ module top_256(
     );
 
     // BANK 1
-    wt_bram bank1 (
+    wt_bram_tri bank1 (
         .clka(clk_sys), .addra(eng_addr_a), .douta(b1_dout_a), .wea(1'b0), .dina(16'b0),
         .clkb(clk_sys), .addrb(eng_addr_b), .doutb(b1_dout_b), 
         .web(eng_we[1]), .dinb(eng_wdata) 
     );
 
     // BANK 2
-    wt_bram bank2 (
+    wt_bram_sq bank2 (
         .clka(clk_sys), .addra(eng_addr_a), .douta(b2_dout_a), .wea(1'b0), .dina(16'b0),
         .clkb(clk_sys), .addrb(eng_addr_b), .doutb(b2_dout_b), 
         .web(eng_we[2]), .dinb(eng_wdata) 
@@ -202,7 +202,14 @@ module top_256(
         .param_wt_id(param_wt_id),
         .param_env_id(param_env_id),
         .param_wt_lfo_id(param_wt_lfo_id),
-        .param_key_on(param_key_on)
+        .param_key_on(param_key_on),
+        .param_ar(param_ar), 
+        .param_ar_rs(param_ar_rs),
+        .param_dr(param_dr),
+        .param_dr_rs(param_dr_rs),
+        .param_sl(param_sl),
+        .param_rr(param_rr),
+        .param_rr_rs(param_rr_rs)
     );
 
     synth_engine_256 engine (

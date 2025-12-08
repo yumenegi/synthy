@@ -200,6 +200,8 @@ module synth_engine_256(
     end
 
     // TODO: test pipeline delay
+    logic signed [31:0] scaled_mix;
+    assign scaled_mix = mixer_acc >>> 2; // divide by 4
     always_ff @(posedge clk) begin
         if (reset) begin
             op_idx <= 0; 
@@ -231,7 +233,13 @@ module synth_engine_256(
             
             // after all slices are processed, the audio becomes valid
             if (pipe_valid[4] && !pipe_valid[3]) begin
-                audio_out <= mixer_acc[23:8]; 
+                if (scaled_mix > 32767) begin
+                    audio_out <= 32767;       // Clip to Max
+                end else if (scaled_mix < -32768) begin
+                    audio_out <= -32768;      // Clip to Min
+                end else begin
+                    audio_out <= scaled_mix[15:0]; // Fits safely
+                end
             end
         end
     end

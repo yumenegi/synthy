@@ -53,81 +53,88 @@ module poly_tb;
         // Since SPI isn't driving these wires yet, we force them.
         
         // A. Configure Envelope #1 (Instant Attack, Full Sustain)
-        $display("Configuring Envelope #1...");
-        force dut.param_wr_en = 3'b100; // Bit 2 = Env Write
-        force dut.param_wr_addr = 1;    // ID 1
-        force dut.param_ar = 120; force dut.param_ar_rs = 8; // Instant
-        force dut.param_dr = 0;   force dut.param_dr_rs = 0;
-        force dut.param_sl = 16'hFFFF;                        // Max Vol
-        force dut.param_rr = 120;  force dut.param_rr_rs = 8;
-        #100;
-        force dut.param_wr_en = 0;
-        #100;
+//        $display("Configuring Envelope #0...");
+//        force dut.param_wr_en = 3'b100; // Bit 2 = Env Write
+//        force dut.param_wr_addr = 0;    // ID 1
+//        force dut.param_ar = 120; force dut.param_ar_rs = 8; // Instant
+//        force dut.param_dr = 0;   force dut.param_dr_rs = 0;
+//        force dut.param_sl = 16'hFFFF;                        // Max Vol
+//        force dut.param_rr = 120;  force dut.param_rr_rs = 8;
+//        #100;
+//        force dut.param_wr_en = 0;
+//        #100;
+        #100
+        release dut.param_wr_en;
+        SW = 16'b0000000110101010;
+        BTN[1] = 1;
+        #10ms;
+        BTN[1] = 0;
 
-        // B. Configure Operator #0 (Play 440Hz Sine)
-        $display("Configuring Operator #0...");
-        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
-        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
-        force dut.param_wr_addr = 0;    // Op 0
-        force dut.param_stride = 30301466; 
-        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
-        force dut.param_env_id = 1;     // Use Env #1
-        force dut.param_key_on = 1;     // Key Down
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
+
+//        // B. Configure Operator #0 (Play 440Hz Sine)
+//        $display("Configuring Operator #0...");
+//        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
+//        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
+//        force dut.param_wr_addr = 0;    // Op 0
+//        force dut.param_stride = 30301466; 
+//        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
+//        force dut.param_env_id = 1;     // Use Env #1
+//        force dut.param_key_on = 1;     // Key Down
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
         
-        $display("Configuring Operator #1...");
-        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
-        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
-        force dut.param_wr_addr = 1;    // Op 0
-        force dut.param_stride = 36033982; 
-        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
-        force dut.param_env_id = 1;     // Use Env #1
-        force dut.param_key_on = 1;     // Key Down
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
+//        $display("Configuring Operator #1...");
+//        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
+//        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
+//        force dut.param_wr_addr = 1;    // Op 0
+//        force dut.param_stride = 36033982; 
+//        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
+//        force dut.param_env_id = 1;     // Use Env #1
+//        force dut.param_key_on = 1;     // Key Down
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
         
-        $display("Configuring Operator #2...");
-        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
-        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
-        force dut.param_wr_addr = 2;    // Op 0
-        force dut.param_stride = 45399630; 
-        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
-        force dut.param_env_id = 1;     // Use Env #1
-        force dut.param_key_on = 1;     // Key Down
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
-        #10ms; // Let tail ring out
+//        $display("Configuring Operator #2...");
+//        // Calc Stride for 440Hz: (440 * 2^32) / 44100 = 42,852,281
+//        force dut.param_wr_en = 3'b001; // Bit 0 = Op Write
+//        force dut.param_wr_addr = 2;    // Op 0
+//        force dut.param_stride = 45399630; 
+//        force dut.param_wt_id = 0;      // Bank 0, Frame 0 (Sine)
+//        force dut.param_env_id = 1;     // Use Env #1
+//        force dut.param_key_on = 1;     // Key Down
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
+//        #10ms; // Let tail ring out
     
-//        // 4. Test Key Off (Release)
-        $display("Releasing Key 0...");
-        force dut.param_wr_en = 3'b001;
-        force dut.param_wr_addr = 0;
-        force dut.param_key_on = 0; // Key Up
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
-        #1ms;
+////        // 4. Test Key Off (Release)
+//        $display("Releasing Key 0...");
+//        force dut.param_wr_en = 3'b001;
+//        force dut.param_wr_addr = 0;
+//        force dut.param_key_on = 0; // Key Up
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
+//        #1ms;
         
-        $display("Releasing Key 1...");
-        force dut.param_wr_en = 3'b001;
-        force dut.param_wr_addr = 1;
-        force dut.param_key_on = 0; // Key Up
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
+//        $display("Releasing Key 1...");
+//        force dut.param_wr_en = 3'b001;
+//        force dut.param_wr_addr = 1;
+//        force dut.param_key_on = 0; // Key Up
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
         
-        #1ms
-        $display("Releasing Key 2...");
-        force dut.param_wr_en = 3'b001;
-        force dut.param_wr_addr = 2;
-        force dut.param_key_on = 0; // Key Up
-        @(posedge dut.clk_sys);
-        #50;
-        force dut.param_wr_en = 0;
+//        #1ms
+//        $display("Releasing Key 2...");
+//        force dut.param_wr_en = 3'b001;
+//        force dut.param_wr_addr = 2;
+//        force dut.param_key_on = 0; // Key Up
+//        @(posedge dut.clk_sys);
+//        #50;
+//        force dut.param_wr_en = 0;
         
         #5ms
         
