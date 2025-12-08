@@ -87,6 +87,8 @@ module top_256(
     // clk locked
     logic locked;
     logic reset;
+
+    assign reset = BTN[0];
     
     // instantiate clock wiz
     clk_wiz_0 clk_wiz (
@@ -110,14 +112,6 @@ module top_256(
         .ready_for_sample(wr_strb) // request signal
     );
 
-    // sigma_delta pdm (
-    //     .clk(clk_sys),
-    //     .reset(~locked),
-    //     .pcm(audio_out[0]),
-    //     .pdm(SPKL)
-    // );
-    // assign SPKR = SPKL;
-
     // engine wires
     logic [16:0] eng_addr_a, eng_addr_b;
     logic [15:0] eng_wdata;
@@ -130,6 +124,11 @@ module top_256(
     logic [15:0] b3_dout_a, b3_dout_b;
     
     logic [15:0] audio_final;
+
+    // testing params
+    // 1 hz number of strides
+    localparam logic [31:0] FREQ_TO_STRIDE_CONST = 32'd97392;
+    logic [31:0] base_stride;
 
     // BANK 0
     wt_bram bank0 (
@@ -187,6 +186,25 @@ module top_256(
     logic [16:0] mcu_wr_addr;
     logic [15:0] mcu_wr_data;
 
+    // bottom switches is hz increase
+    // top switches are octaves
+    logic [31:0] stride_in;
+    assign base_stride = SW[7:0] * FREQ_TO_STRIDE_CONST;    
+    assign stride_in = base_stride << SW[10:8];
+
+    board_test tester (
+        .clk(clk_sys),
+        .btn(BTN[1]),
+        .stride_in(stride_in),
+        .param_stride(param_stride),
+        .param_wr_en(param_wr_en),
+        .param_wr_addr(param_wr_addr),
+        .param_wt_id(param_wt_id),
+        .param_env_id(param_env_id),
+        .param_wt_lfo_id(param_wt_lfo_id),
+        .param_key_on(param_key_on)
+    );
+
     synth_engine_256 engine (
         .clk(clk_sys),
         .reset(reset),
@@ -229,5 +247,11 @@ module top_256(
         .audio_out(audio_final)
     );
 
-
+    sigma_delta pdm (
+        .clk(clk_sys),
+        .reset(~locked),
+        .pcm(audio_final),
+        .pdm(SPKL)
+    );
+    assign SPKR = SPKL;
 endmodule
