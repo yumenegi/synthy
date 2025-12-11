@@ -8,13 +8,19 @@ from engine import Engine
 import engine
 import curses
 from collections import deque
+from random import randint
 
+seed = 8008135
 
+def fast_rand():
+    global seed
+    seed = (1103515245 * seed + 12345) & 0x7FFFFFFF
+    return seed
 
 def draw_dashboard(win, channel_status):
     win.erase()
     win.border()
-    win.addstr(0, 2, " [ SYNTH DASHBOARD ] ", curses.color_pair(1) | curses.A_BOLD)
+    win.addstr(0, 2, " [ SYNTH STATUS ] ", curses.color_pair(1) | curses.A_BOLD)
     
     for i in range(16):
         # Safety check to keep within window bounds
@@ -23,6 +29,100 @@ def draw_dashboard(win, channel_status):
             # Color active channels green, inactive grey
             attr = curses.color_pair(2) if "Note:" in status else curses.color_pair(3)
             win.addstr(i + 1, 2, f"CH{i+1:02}: {status}", attr)
+    win.refresh()
+
+def draw_stat(win, channel_status):
+    win.erase()
+    win.border()
+    win.addstr(0, 2, " [ RYDEEN ] ", curses.color_pair(1) | curses.A_BOLD)
+    
+    art = r"""
+⠀⠀⠠⡂⠠⢀⢐⠔⠐⡀⠄⢀⠀⡠⢂⠀⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠠⠈⠠⠐⠐⠀⢂⠀⠀⠀⠀⠀⢀⠀⠠⠀⠂
+⡡⠂⠕⢹⠑⡼⡂⠌⣡⢰⠈⡀⡱⡡⠃⣢⠅⡐⢈⠀⠂⠠⠀⠀⠁⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡐⠈⠀⢁⢀⠈⠄⠂⠀⠐⠀⢀⢈⢀⠁⠈⠀⠈⠀⡀⠁
+⡂⠌⡂⡃⠕⢈⠐⠗⠡⠑⠀⡐⣠⡗⠕⠍⡸⢰⢧⠂⢌⠠⠀⠂⠄⠁⠀⠀⠀⠂⠀⠠⠀⠀⠄⠀⠀⠄⠂⠀⢀⠀⠂⠀⢀⠀⠀⢀⠀⠀⠀⠀⠀⢀⠀⠄⠀⠐⠀⠄⠀⠈⢀⠀⡈⠀⠠⠐⠀⠐⠀⠀⡀⠈⡈⢐⢀⠂⠄⠀
+⠀⠂⠂⠀⠐⠀⠈⠐⠀⠠⠐⠝⠑⠀⠁⠬⠀⠅⠏⠬⠈⠀⠀⠁⠀⡁⠀⠈⠀⠀⠀⠀⠀⠀⠀⠄⡂⠐⠀⡈⠀⡀⠁⢀⠀⡀⠄⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠂⠁⠀⠀⠂⠀⠄⠠⠠⠀⠠⠀⠂⡁⠂⠠⢀⠀⠄⠀⠄⡈⠄
+⡀⠐⠈⠀⠠⠀⠈⠀⠐⠒⠁⠠⠁⠀⡁⢁⠐⠈⠀⠀⡀⢠⠈⠀⠠⠀⠠⠐⠀⠀⠐⠀⠄⠡⠁⠂⠐⠀⠂⠀⠀⢀⠠⠀⠀⠀⠈⠄⠈⠀⠀⠀⠀⠠⠀⢐⢈⠀⡐⠈⠀⠂⠁⡈⠠⢀⠂⡐⢈⠠⠀⡁⠂⠠⠀⠂⢀⠀⠀⠀
+⠠⠐⠀⠀⠀⡀⠈⠀⠀⠀⠁⢀⠀⠂⠀⠀⢀⠠⠀⠁⢀⠰⠠⠐⠀⠀⡀⠀⠀⡀⠄⠂⢈⠀⠀⠀⠂⠀⠠⠀⠁⠀⠄⠀⠈⠀⠐⠀⠂⠀⠂⠀⠁⠀⢀⠄⠀⠄⠀⠄⢁⢄⠅⣐⢌⢢⢱⢐⠄⠕⡀⢂⠁⠂⠐⠀⢀⠀⠄⠂
+⠀⠀⠄⠄⠁⠀⠠⠠⠂⠁⠐⠀⠌⠀⠀⠁⠀⠀⠀⠐⠀⡀⠂⠄⠀⠄⠀⠀⠠⠀⠀⠐⠠⠀⠁⠀⠀⠄⠀⠀⠂⠀⠄⠂⠈⠀⠈⠀⠁⠈⠀⠂⠀⠀⠂⠀⠐⢀⠂⣌⢎⠢⡊⣆⢧⡣⡣⡣⡑⡕⡨⠀⠄⠁⢀⠁⠀⠀⠀⢀
+⠀⠁⠀⠀⠀⠈⠀⠀⢀⠀⠂⠠⠀⠀⠈⠀⢀⠈⢀⠁⢐⠈⠌⠨⢐⠀⠀⠐⠀⡐⠈⡀⠠⠀⠂⠀⢀⠀⠀⠠⠀⢀⠀⠀⡀⠀⠂⠀⡀⠄⠐⠈⠀⠀⠂⠀⡁⠄⡌⡎⢆⢏⣞⢮⡳⣝⡔⡕⡕⡌⡂⠅⠂⢈⠀⠀⠁⠀⠁⠀
+⠈⠀⠀⠀⠂⠀⠐⠈⡀⠠⠀⠀⡀⠈⠀⠈⠀⠠⠐⠀⠂⠅⢅⢑⢐⠠⠀⠀⢐⠠⠁⠀⠄⡀⠄⠂⠀⠀⠀⠄⠀⡀⢀⠁⠠⠀⠂⠁⠀⠀⢀⠠⠀⠀⠄⠀⠂⢎⢆⢏⡪⡳⡳⣝⣞⢮⢪⢎⠪⡐⠐⡈⠄⠂⠀⠁⠀⠂⠀⠀
+⠀⠀⠈⠀⠀⢀⠈⠄⠀⠀⢀⠀⠀⡀⠈⠀⡈⠠⠈⠠⠡⠑⡐⡐⡐⡐⡀⠈⠀⠀⠌⡀⡢⠰⢐⠠⠀⠂⠀⠀⠄⠀⡀⠈⠄⠁⠡⡁⠂⠁⠀⠀⠀⠀⠀⠠⡸⣕⢕⣕⢧⢯⢯⢞⡮⡇⣇⢇⠅⡂⢁⠠⠐⠀⢁⠀⠂⠀⠀⠈
+⠂⠀⠂⠀⠁⠄⠀⠀⠀⠠⠀⠀⡀⠀⠠⠀⠀⠂⠀⠅⠨⢐⢐⢐⢐⢐⢐⠀⠈⡈⡢⡣⡱⡡⡑⢐⠀⠄⠂⠁⠀⠄⢐⠠⠈⠄⡡⠠⢁⠈⠀⠀⢀⠀⡐⡼⣝⣮⢯⣞⡵⡯⡯⡳⠹⡈⠪⡒⡐⡐⠄⠀⡀⠈⠀⠀⠀⠐⠀⠀
+⠀⡀⠀⠀⠀⠀⠀⠀⠂⠀⢀⠀⠀⡀⠀⡀⠐⠈⠀⡀⠡⠐⠐⢐⠐⡐⡐⠀⠀⡀⢆⢖⡕⡔⢔⠡⢂⠁⠠⠐⠀⠂⡐⠠⠁⠅⡂⠕⡠⠀⠂⠁⠀⢀⠢⠑⢹⢺⣻⢝⢪⠡⢂⠄⡅⡢⢁⢂⠐⢀⠁⠂⡀⠄⠀⡀⠀⡀⠀⠄
+⠀⠀⠀⠈⠀⠀⠈⠀⠀⠠⠀⠀⠀⠀⠀⡀⠠⠐⢀⠂⠔⠠⠈⠄⢂⠂⠔⠀⠀⡀⢕⡕⡇⠅⠡⠈⠂⠁⠀⠀⡀⠁⠀⠈⢀⠁⡂⢅⢂⠂⠀⠠⡀⠀⢎⢎⢮⡪⡮⡣⡣⡑⡅⡇⡇⢇⠣⠑⠨⢀⠀⡁⠀⠄⠂⠀⠀⠀⠀⠀
+⢂⢀⠁⡀⠀⠄⠐⠀⠁⠀⢀⠠⠈⠀⠂⠀⠄⠂⠀⠌⢈⠈⠄⡁⡂⠅⠂⠀⠁⡄⢇⣇⢎⡂⡅⠀⠄⠈⡬⡀⡂⡀⠂⠁⢀⢂⢐⠔⡐⠄⠕⡁⡂⠀⠣⡫⡣⢫⢪⢗⡑⢌⢎⠊⢕⢅⠐⠈⢀⠠⠀⠠⠐⠀⠐⠈⢀⠐⠀⡀
+⠂⡀⠈⡀⢀⠠⠀⠄⠂⡈⠠⢐⠀⡁⢈⠠⠀⠄⠡⠨⢀⠂⠄⠀⠄⠅⠀⠀⠂⠌⢮⣺⡪⡪⢂⠐⢀⢴⡱⢐⢐⠄⡀⠐⡀⢂⢂⢊⠄⠕⢐⠐⠀⠈⠀⡜⡦⡱⣨⢓⠨⠀⢯⡢⣱⢱⠨⢈⠀⠀⠄⢂⠀⠂⠁⡈⠠⠠⠁⠄
+⠀⠠⠐⡔⢄⢐⠠⠨⠐⠠⢑⠄⠅⠄⠂⡐⢀⠂⠅⢌⢂⢂⠐⠀⠂⠡⠀⠀⠀⢑⢕⢕⢇⠣⢂⠐⡐⣗⡕⠔⡐⢅⠐⠠⠐⢐⢐⢐⠡⢑⢐⠁⠀⠀⠐⣘⢜⢜⢜⠀⠂⠡⢱⣫⢮⢬⡨⡠⡢⡱⡡⠡⠈⠄⢁⠠⠈⠄⠅⡡
+⠀⠐⠈⡪⡢⡢⡪⢌⡂⢅⢂⠪⡘⠨⡀⢂⠂⢅⢑⠰⡐⠄⠂⠁⠈⠠⢁⠀⢀⠀⠸⡸⡨⡊⢔⢀⠂⣇⢇⠡⢈⢂⠅⢂⠨⢀⠂⠔⡁⠊⠀⠀⠀⠀⢐⢵⣣⢏⠆⠌⢀⠁⡂⢯⡷⣷⣽⣳⢝⡜⡌⢌⠐⠀⠄⠂⡁⠅⡁⠢
+⠀⠀⠄⠘⣜⢼⡸⡕⡎⡆⡣⡑⠌⡂⡐⢀⠊⡐⡐⠅⡊⠀⠂⠀⠐⢀⠂⠅⠀⠀⠀⡇⡇⣎⢶⡱⡡⡊⢆⠐⢐⠐⡀⡂⠌⠔⡈⡂⡊⠄⠀⠀⠀⠀⠨⣳⡳⡓⡍⡂⠠⠀⢀⠳⣟⣿⣞⡗⡇⡇⡊⠄⠠⠁⠄⠡⠠⠡⠨⠨
+⠀⠐⠀⠄⢱⡣⣗⢵⢱⢑⢕⠨⠐⡀⠄⠂⡐⢀⢂⠑⠄⠐⢀⠡⠈⡀⠌⠈⠀⠀⠀⢕⢕⢜⢎⢊⠐⠌⠄⠀⠄⠄⠄⠠⠡⢑⢐⠐⠌⠀⠀⠀⠀⠀⠈⡞⡎⡐⠀⠌⠐⢀⠠⠀⢝⢿⢮⡫⡪⡂⢊⠀⠂⠐⢈⠠⢁⠊⠌⡨
+⢮⢪⢖⡴⡵⣝⢮⡣⡣⡣⢂⠅⠁⠄⠐⠀⠄⠂⡀⠊⠌⡐⡀⢂⠡⠀⠀⠀⠀⠀⠀⠀⠱⡘⡌⢆⢲⠱⠡⠐⠀⡂⠅⡂⠌⡐⠄⡑⠀⠀⠀⠀⠀⠀⠀⢕⢵⢄⣂⢈⠠⡀⠄⢄⢢⢯⡳⡑⡅⡂⠂⢀⠁⠐⢀⢐⠐⠨⢐⠠
+⡣⠣⡫⣞⡽⣺⢕⢇⢇⠪⡐⠠⠁⠄⢁⠐⠀⠄⠠⠁⢂⢐⠠⠂⠌⡈⠀⠀⠀⠀⠂⠀⣠⢪⢪⢊⢆⢃⠅⡀⠐⡀⡂⡂⠅⠢⡑⢤⢀⠀⠀⠀⠀⠀⠀⠈⡗⣝⣜⢽⢸⢸⢸⢨⢣⢓⢕⢕⠢⠂⢁⠀⠄⠈⡀⠄⠌⠨⢀⠂
+⠇⢅⢣⢗⡽⡵⡝⡎⡪⡨⢐⠈⡀⠂⠠⠀⢂⠐⢀⠈⠄⠂⠄⢁⠂⠂⠀⠀⠀⡀⡀⡔⣸⢸⢸⢨⢊⢎⠪⠀⠐⡀⢂⠂⠅⠕⡐⠡⡅⢆⣀⠀⠄⠀⠁⠀⢘⢎⢮⠺⡨⢘⠜⢜⢜⡐⡐⠠⠡⠁⠄⠀⠄⠂⠀⢂⠨⠐⢐⢀
+⠪⠐⢅⢗⣝⢮⢪⡪⡪⡢⡁⡂⠐⢈⠠⠨⠐⡀⠂⠨⠀⠅⡐⠠⠨⠀⠀⠀⠁⠔⡅⢕⢼⣇⠣⡣⢱⢑⠔⢁⠀⢂⠂⠅⠕⡁⢊⢌⠂⠌⢎⢖⠤⡠⠀⠀⠀⢕⣑⣁⢄⢂⠈⠀⡂⣂⠢⡁⠄⠁⡀⠂⠀⠄⠁⠠⠐⠈⠄⢂
+⠌⠨⠐⢕⢎⢮⢣⢣⡣⡣⡢⢊⠨⢀⠐⠈⠄⠠⠈⠄⡁⢂⢐⠈⠄⠀⠀⠀⠡⢑⠜⢔⢸⣟⡷⣄⠁⠕⠌⠄⠐⢀⠊⠌⠂⡐⢔⠌⠂⡈⠄⠂⠡⠀⠀⠀⠀⢑⢺⠸⠪⠂⠌⢀⠀⠠⢑⠢⠨⠀⡀⠀⠂⢀⠈⠄⠨⠀⠅⠂
+⠡⠀⠂⠡⡱⡱⡱⡱⡑⢕⢜⢔⢑⠔⡈⡐⠠⠈⡐⢀⠂⡐⢐⠀⠀⠀⠀⠐⠈⢔⠩⡂⡂⣿⣽⣳⡳⣄⠅⠁⠀⢂⠰⠠⡑⢌⠆⠅⠂⠀⠂⡁⢈⠀⠀⠀⠂⠀⢱⢸⣜⢮⢲⢐⠌⠄⠅⠌⠠⠁⠀⠠⠈⠀⠀⢂⠁⠌⠠⠡
+⠠⠀⢂⢑⢌⠢⠑⠐⢈⠐⠐⠡⠱⠨⡂⡂⡂⢁⠀⡂⢐⠠⠁⠀⠀⠐⠀⠀⢈⢐⡑⠌⠄⠸⣞⡷⡝⣞⠜⢀⠡⡂⢌⠢⡑⢅⠊⠀⠀⡁⠂⠠⠀⠄⠀⠀⠀⠀⠀⡇⡗⢝⢌⠢⡈⡂⡁⢈⠀⠄⠁⡀⠄⢈⠐⡀⢂⠡⠡⠨
+⠀⠂⠀⡂⠢⡑⢈⠠⢀⠐⡈⠠⠁⠅⡐⠄⠂⠀⠠⠐⠀⠀⠀⠀⠀⠀⠀⠀⢐⠐⢌⠜⡈⠈⠽⡽⡽⠡⢀⠀⢈⠐⢅⠌⢜⢐⠁⠀⠁⡀⢈⠀⠂⠀⠀⠀⠁⠀⠀⠸⡨⢊⠢⡑⡐⠄⠐⠀⡀⠄⠂⠠⠐⡀⡂⢂⠡⠠⠡⠨
+⡈⠠⠁⡀⢈⠐⢀⠂⡂⢂⠂⠡⠁⢅⢊⠠⠈⠄⡀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠂⢌⢂⢂⢂⠁⠄⢋⢃⠡⡠⠀⠄⠠⢈⢊⠂⠂⠀⠈⢀⠠⠀⠂⠁⠀⠁⠀⠀⠀⠂⠀⠈⠂⠑⢈⢐⠈⢄⣁⢄⢂⠌⠄⠡⠐⠀⠂⠐⡈⢐⠈
+⠠⢁⢂⠐⠠⠐⡀⠂⠐⠀⢈⠠⡑⢔⠀⢐⠈⠄⢂⠐⠠⡀⠄⠂⠀⠀⠀⠐⠈⠠⢂⢂⢂⠂⠀⠄⠐⢡⢒⠄⠨⠐⢐⠀⠁⠈⠀⠈⠀⢀⠐⠈⠀⠁⠀⠀⠈⠀⢀⠠⢠⠠⢂⢂⠢⡁⣿⣿⣳⢣⢧⢥⡡⡂⠡⢈⠀⠄⠂⠌
+⢁⢂⠂⠌⠀⠁⠀⠀⡁⡰⢐⢑⠌⡀⠄⠂⠄⠡⠐⢈⠠⠀⠉⠪⡘⢔⠔⡄⡌⡐⢐⠐⡐⡈⠀⠀⠌⢐⢕⠀⠌⠐⠀⠀⠀⠁⠀⠠⠈⠀⡀⠂⠁⡀⢄⠢⡑⢌⠪⡘⡐⢌⢐⠄⢅⠂⢵⣿⣿⣧⡑⠧⡳⣝⢜⠠⠂⠨⠠⠡
+⣁⠢⡠⢀⠐⢀⠨⢐⠰⠨⠢⡑⢀⠀⠄⠂⠡⢈⠐⠠⠐⢀⠀⠂⠀⢁⠊⢢⢂⠂⡂⠌⡐⠄⠂⠁⠠⢑⠔⠀⠐⠀⠀⠀⠂⠀⠀⠄⠀⠂⠀⠄⠁⡐⢅⠕⠌⡂⠕⡐⡐⡐⡐⠌⡂⠌⠼⣿⣿⣾⢷⣅⠑⢕⢵⢨⠀⠅⢌⠐
+⡧⡱⠐⠀⠄⠐⠨⡐⡅⡍⡪⠀⠄⠠⠐⢈⠐⡐⢈⠐⢈⢀⠀⠠⠐⠀⠐⠀⡂⠡⠀⠅⡂⠅⠠⠐⠀⢑⠐⠈⢀⠁⠀⠁⠀⠀⠠⠀⡈⢀⠁⠄⠁⡐⠅⡊⠐⡈⡂⡂⠔⡐⠌⢌⠄⠅⢊⣿⣷⣿⢿⣷⢭⡂⠌⠱⠨⢈⢐⠈
+    """
+    text = r"""
+SYNTHY VER. 0
+=======================
+Instrument 1  || bass1
+Instrument 2  || jab1
+Instrument 3  || lead1
+Instrument 4  || lead1
+Instrument 5  || lead2
+Instrument 6  || brass1
+Instrument 7  || harm1
+Instrument 8  || square1
+Instrument 9  || drum
+Instrument 10 || drum
+Instrument 11 || tom
+Instrument 12 || tom
+Instrument 13 || harm1
+
+
+
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⢒⠩⢍⠭⢍⡒⢄⡀⢤⠀⢶⠠⢭⠉⡩⠛⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⡰⡕⢍⠤⠰⠓⢯⢊⢳⢀⠕⡜⠑⠐⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢀⢠⡇⡷⠁⠁⠀⡀⣀⢰⢞⢸⠁⠁⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢀⠠⢔⠜⡜⢀⢣⡡⣻⢤⠃⡊⡔⢍⠎⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⣤⣊⣐⣓⠊⠳⠀⠓⠈⠑⠬⣒⡙⣒⣊⠥⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+
+
+
+(c) 2025 ponc+2 inc.
+"""
+    start_y = 1
+    start_x = 2
+    for i, line in enumerate(art.splitlines()):
+        current_y = start_y + i
+        max_y, max_x = win.getmaxyx()
+        if current_y < max_y - 1 and start_x + len(line) < max_x - 1:
+            win.addstr(current_y, start_x, line)
+    
+    start_y = 1
+    start_x = 83
+
+    for i, line in enumerate(text.splitlines()):
+        current_y = start_y + i
+        max_y, max_x = win.getmaxyx()
+        if current_y < max_y - 1 and start_x + len(line) < max_x - 1:
+            if len(channel_status) and i >= 3 and i <= 15:
+                status = channel_status[i-2]
+            else:
+                status = ""
+            attr = curses.color_pair(2) if "Note:" in status else curses.color_pair(3)
+            win.addstr(current_y, start_x, line, attr)
+
     win.refresh()
 
 def draw_tracker(win, history):
@@ -71,7 +171,7 @@ def main(stdscr):
     lead2 = Patch("lead2", [6], 0, True, 7, 20)
     harm1 = Patch("harm1", [2], 0)
     brass1 = Patch("brass1", [6], 0)
-    square1 = Patch("square1", [3], 0)
+    square1 = Patch("square1", [3], 0, True, 5, 10)
     drum = Patch("drum", [0, 1, 6], 1)
     tom = Patch("tom", [0], 1)
 
@@ -110,19 +210,28 @@ def main(stdscr):
     rows, cols = stdscr.getmaxyx()
     # Split screen: Top 18 lines for Dashboard, Rest for Tracker
     dash_height = 19
-    tracker_height = rows - dash_height
+    stat_height = rows - dash_height
 
-    win_dash = curses.newwin(dash_height, cols, 0, 0)
-    win_track = curses.newwin(tracker_height, cols, dash_height, 0)
+    # win_dash = curses.newwin(dash_height, cols, 0, 0)
+    # win_track = curses.newwin(tracker_height, cols, dash_height, 0)
+
+    dash_width = 120
+    tracker_width = cols - dash_width
+
+    win_dash = curses.newwin(dash_height, dash_width, 0, 0)
+    win_stat = curses.newwin(stat_height, dash_width, dash_height, 0)
+    win_track = curses.newwin(rows, tracker_width, 0, dash_width)
+
+    
 
     # 3. Data State
     channel_status = ["--"] * 16
 
     # Tracker state: A deque representing rows of the tracker
     # Each row is a list of 16 strings (e.g., ["C-4", "...", "..."])
-    tracker_history = deque(maxlen=tracker_height)
+    tracker_history = deque(maxlen=rows)
     # Fill with empty data initially
-    for _ in range(tracker_height):
+    for _ in range(rows):
         tracker_history.append([".. "] * 16)
         
     # Current active notes (to persist in tracker view if holding)
@@ -164,6 +273,7 @@ def main(stdscr):
             
 
             draw_dashboard(win_dash, channel_status)
+            draw_stat(win_stat, channel_status)
 
             win_dash.nodelay(True)
             k = win_dash.getch()
